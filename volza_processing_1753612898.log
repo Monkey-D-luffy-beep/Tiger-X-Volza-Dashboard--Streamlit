@@ -1,0 +1,49 @@
+2025-07-27 16:11:38,146 - INFO - Processing folder: Final_Download
+2025-07-27 16:14:19,088 - INFO - Found 35 Excel files across all folders
+2025-07-27 16:16:17,865 - INFO - Found 6 unique header patterns across 254 unique columns
+2025-07-27 16:16:17,865 - INFO - Pattern 1 (11 files): 54 columns
+2025-07-27 16:16:17,865 - INFO - Pattern 2 (7 files): 58 columns
+2025-07-27 16:16:17,866 - INFO - Pattern 3 (7 files): 53 columns
+2025-07-27 16:16:17,889 - INFO - Built mapping for 254 columns
+2025-07-27 16:16:17,889 - INFO - Starting file processing...
+2025-07-27 16:16:17,890 - INFO - Processing file 1/35: Base Paper.xlsx
+2025-07-27 16:16:18,560 - INFO - [+] Processed: Base Paper.xlsx | Rows: 1955 | Columns: 73
+2025-07-27 16:16:18,561 - INFO - Processing file 2/35: Films.xlsx
+2025-07-27 16:16:24,143 - INFO - [+] Processed: Films.xlsx | Rows: 12848 | Columns: 73
+2025-07-27 16:16:24,143 - INFO - Processing file 3/35: home.xlsx
+2025-07-27 16:16:28,495 - INFO - [+] Processed: home.xlsx | Rows: 60002 | Columns: 73
+2025-07-27 16:16:28,495 - INFO - Processing file 4/35: PTA.xlsx
+2025-07-27 16:16:28,847 - INFO - [+] Processed: PTA.xlsx | Rows: 684 | Columns: 73
+2025-07-27 16:16:28,848 - INFO - Processing file 5/35: US- ceramics, tiles, stones.xlsx
+2025-07-27 16:16:36,282 - INFO - [+] Processed: US- ceramics, tiles, stones.xlsx | Rows: 60002 | Columns: 73
+2025-07-27 16:16:36,283 - INFO - Processing file 6/35: 1234.xlsx
+2025-07-27 16:16:38,442 - INFO - [+] Processed: 1234.xlsx | Rows: 470 | Columns: 73
+2025-07-27 16:16:38,442 - INFO - Processing file 7/35: Direct_download_auto,automotive,two_wheeler,brake,tyres,car,motorcycles,motorbike,electric_vehicles_electric_vehicles,clutch,automobile,engine_oil,electric_car.xlsx
+2025-07-27 16:16:42,276 - INFO - [+] Processed: Direct_download_auto,automotive,two_wheeler,brake,tyres,car,motorcycles,motorbike,electric_vehicles_electric_vehicles,clutch,automobile,engine_oil,electric_car.xlsx | Rows: 9105 | Columns: 73
+2025-07-27 16:16:42,276 - INFO - Processing file 8/35: Solar.xlsx
+2025-07-27 16:17:00,783 - INFO - [+] Processed: Solar.xlsx | Rows: 56856 | Columns: 73
+2025-07-27 16:17:00,783 - INFO - Processing file 9/35: Direct_download_HSCode_01_05_2024_30_04_2025_Current_12_05_2025_11_36_am.xlsx
+2025-07-27 16:17:10,799 - INFO - [+] Processed: Direct_download_HSCode_01_05_2024_30_04_2025_Current_12_05_2025_11_36_am.xlsx | Rows: 22165 | Columns: 73
+2025-07-27 16:17:10,800 - INFO - Processing file 10/35: Direct_download_HSCode_01_11_2024_30_04_2025_Current_12_05_2025_11_38_am.xlsx
+2025-07-27 16:17:19,765 - INFO - [+] Processed: Direct_download_HSCode_01_11_2024_30_04_2025_Current_12_05_2025_11_38_am.xlsx | Rows: 21945 | Columns: 73
+2025-07-27 16:17:19,765 - INFO - Processing file 11/35: Hemant Ji Auto Arfrica Belt.xlsx
+2025-07-27 16:17:38,357 - INFO - [+] Processed: Hemant Ji Auto Arfrica Belt.xlsx | Rows: 42927 | Columns: 73
+2025-07-27 16:17:38,357 - INFO - Processing file 12/35: Hemant Ji Auto South Africa.xlsx
+2025-07-27 16:18:10,164 - INFO - [+] Processed: Hemant Ji Auto South Africa.xlsx | Rows: 78181 | Columns: 73
+2025-07-27 16:18:10,165 - INFO - Processing file 13/35: Henmant Ji Auto Japan.xlsx
+2025-07-27 16:18:17,703 - INFO - [+] Processed: Henmant Ji Auto Japan.xlsx | Rows: 21385 | Columns: 73
+2025-07-27 16:18:17,703 - INFO - Processing file 14/35: Ceramic_Latan.xlsx
+2025-07-27 16:18:19,874 - INFO - [+] Processed: Ceramic_Latan.xlsx | Rows: 2356 | Columns: 73
+2025-07-27 16:18:19,875 - INFO - Processing file 15/35: Company-High Grade _Ceramic.xlsx
+2025-07-27 16:18:22,429 - INFO - [+] Processed: Company-High Grade _Ceramic.xlsx | Rows: 358 | Columns: 73
+2025-07-27 16:18:22,430 - INFO - Processing file 16/35: MoniaJi _ Auto_China.xlsx
+2025-07-27 16:18:57,538 - INFO - [+] Processed: MoniaJi _ Auto_China.xlsx | Rows: 53397 | Columns: 73
+2025-07-27 16:18:57,538 - INFO - Processing file 17/35: MoniaJi _Auto_Thailand.xlsx
+2025-07-27 16:20:00,438 - INFO - [+] Processed: MoniaJi _Auto_Thailand.xlsx | Rows: 78081 | Columns: 73
+2025-07-27 16:20:00,438 - INFO - Processing file 18/35: MoniaJi_ Captial_Machinery_Vietnam.xlsx
+2025-07-27 16:20:16,316 - INFO - [+] Processed: MoniaJi_ Captial_Machinery_Vietnam.xlsx | Rows: 28933 | Columns: 73
+2025-07-27 16:20:16,317 - INFO - Processing file 19/35: MoniaJi_ Electronics_Capital Good__China.xlsx
+2025-07-27 16:21:20,817 - INFO - [+] Processed: MoniaJi_ Electronics_Capital Good__China.xlsx | Rows: 101984 | Columns: 73
+2025-07-27 16:21:20,818 - INFO - Processing file 20/35: MoniaJI_Auto_Italy_Germany_Spain.xlsx
+2025-07-27 16:21:26,142 - INFO - [+] Processed: MoniaJI_Auto_Italy_Germany_Spain.xlsx | Rows: 7712 | Columns: 73
+2025-07-27 16:21:26,143 - INFO - Processing file 21/35: MoniaJi_captialGoodS_ Machinery_Italy_Spain_Germany.xlsx
