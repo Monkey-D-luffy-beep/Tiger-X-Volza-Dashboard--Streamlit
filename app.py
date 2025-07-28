@@ -11,6 +11,45 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
+import streamlit_authenticator as stauth
+
+# Hashed credentials dictionary you generated before
+credentials = {
+    'usernames': {
+        'admin': {
+            'name': 'Saurav',
+            'password': '$2b$12$twr2mJ1UltKDz0nZ5Kg0ru5lPk/uA1rFloe8xVie8Mo5zzyzZQO.i'  
+        }
+    }
+}
+
+authenticator = stauth.Authenticate(
+    credentials,
+    "tigerx_dashboard",  # cookie name
+    "tiger",             # signature key
+    cookie_expiry_days=1
+)
+
+name, auth_status, username = authenticator.login(
+    form_name='Login',
+    location='sidebar'
+)
+
+
+if auth_status is False:
+    st.error("Username/password is incorrect")
+    st.stop()
+elif auth_status is None:
+    st.warning("Please enter your username and password")
+    st.stop()
+
+# After login
+authenticator.logout("Logout", location='sidebar')
+st.sidebar.success(f"Welcome {name}!")
+
+
+
+
 # ─── Page config & theme ──────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Tiger X Market Intelligence",

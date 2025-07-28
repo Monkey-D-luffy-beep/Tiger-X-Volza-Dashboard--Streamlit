@@ -6,3 +6,4 @@ rapidfuzz
 sqlalchemy
 plotly
 pymysql
+streamlit-authenticator
