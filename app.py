@@ -157,11 +157,13 @@ def get_database_engine():
         pool_recycle=3600,
         echo=False,  # Set to True for SQL debugging
         connect_args={
-            "charset": "utf8mb4",
-            "connect_timeout": 30,
-            "read_timeout": 30,
-            "write_timeout": 30,
-        }
+    "charset": "utf8mb4",
+    "connect_timeout": 60,        # Increased from 30
+    "read_timeout": 60,           # Increased from 30
+    "write_timeout": 60,          # Increased from 30
+    "autocommit": True,           # Add this
+    "init_command": "SET SESSION wait_timeout=300"  # Add this
+}
     )
     return engine
 
@@ -210,19 +212,98 @@ def get_count_estimate(where_clause: str, params: dict):
     except Exception as e:
         st.error(f"Count error: {e}")
         return 0
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_filtered_countries(hs_code_prefix: str = None, mode: str = "Export"):
+    """Get countries filtered by HS code if provided"""
+    country_column = "country_of_destination" if "Export" in mode else "country_of_origin"
+    
+    if hs_code_prefix:
+        sql = text(f"""
+            SELECT DISTINCT `{country_column}` 
+            FROM volza_main 
+            WHERE `{country_column}` IS NOT NULL 
+            AND `{country_column}` != ''
+            AND hs_code LIKE :hs
+            ORDER BY `{country_column}`
+            LIMIT 200
+        """)
+        params = {"hs": f"{hs_code_prefix}%"}
+    else:
+        # Use a faster query for all countries
+        sql = text(f"""
+            SELECT `{country_column}`, COUNT(*) as cnt
+            FROM volza_main 
+            WHERE `{country_column}` IS NOT NULL 
+            AND `{country_column}` != ''
+            GROUP BY `{country_column}`
+            ORDER BY cnt DESC
+            LIMIT 100
+        """)
+        params = {}
+    
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SET SESSION wait_timeout=300"))  # Add this
+            result = conn.execute(sql, params).fetchall()
+            return [r[0] for r in result]
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return ["USA", "CHINA", "GERMANY", "UK", "JAPAN"]  # Fallback list
 
-def fuzzy_filter_optimized(choices, query, limit=100, cutoff=70):
-    """Optimized fuzzy matching with higher cutoff and lower limit"""
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_hs_codes_for_mode(mode: str):
+    """Get unique 2-digit HS codes filtered by export/import mode"""
+    if "Export" in mode:
+        # For exports, get HS codes that have destination countries
+        sql = text("""
+            SELECT DISTINCT LEFT(hs_code, 2) as hs_2digit
+            FROM volza_main 
+            WHERE hs_code IS NOT NULL 
+            AND hs_code != ''
+            AND country_of_destination IS NOT NULL
+            AND country_of_destination != ''
+            AND LENGTH(hs_code) >= 2
+            ORDER BY hs_2digit
+        """)
+    else:
+        # For imports, get HS codes that have origin countries
+        sql = text("""
+            SELECT DISTINCT LEFT(hs_code, 2) as hs_2digit
+            FROM volza_main 
+            WHERE hs_code IS NOT NULL 
+            AND hs_code != ''
+            AND country_of_origin IS NOT NULL
+            AND country_of_origin != ''
+            AND LENGTH(hs_code) >= 2
+            ORDER BY hs_2digit
+        """)
+    
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SET SESSION wait_timeout=300"))
+            result = conn.execute(sql).fetchall()
+            return [r[0] for r in result]
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return ["85", "84", "87", "90", "73"]  # Fallback
+    
+
+def fuzzy_filter_optimized(choices, query, limit=50, cutoff=80):
+    """Optimized fuzzy matching with early termination"""
     if not query or len(query) < 2:
         return set()
     
-    return {
-        match
-        for match, score, _ in process.extract(
-            query, choices, scorer=fuzz.WRatio, limit=limit
-        )
-        if score >= cutoff
-    }
+
+    # Early exact match check
+    exact_matches = {choice for choice in choices if query.lower() in choice.lower()}
+    if exact_matches:
+        return exact_matches
+    
+    # Fuzzy search with optimized parameters
+    matches = process.extract(
+        query, choices, scorer=fuzz.WRatio, limit=limit
+    )
+    return {match for match, score, _ in matches if score >= cutoff}
 
 # ─── Enhanced Sidebar with Better UX ───────────────────────────────────────────
 def render_sidebar():
@@ -238,11 +319,7 @@ def render_sidebar():
     st.sidebar.markdown("---")
     
     # Enhanced filters with help text
-    hs_q = st.sidebar.text_input(
-        "**📋 HS Code Prefix**",
-        placeholder="e.g., 85, 8517, 851712...",
-        help="Enter HS code prefix (2, 4, 6, or 8 digits)"
-    )
+   
     
     ship_q = st.sidebar.text_input(
         "**🏢 Shipper Name**",
@@ -267,32 +344,63 @@ def render_sidebar():
         placeholder="Enter notify party...",
         help="Search in notify party field"
     )
-    
+    st.sidebar.markdown("---")
     # Country selection with loading
+   # HS Code selection with dynamic filtering
+    with st.sidebar:
+        st.markdown("**📋 HS Code Selection**")
+        available_hs = get_hs_codes_for_mode(mode)
+
+          # HS Code dropdown with mode-specific suggestions
+        selected_2digits = st.multiselect(
+    "**2‑Digit HS Code**",
+        available_hs,
+        help="Select one or more 2‑digit HS codes"
+    )
+        
+        # Manual HS input (optional for more specific codes)
+        manual_hs = st.text_input(
+            "**Specific HS Code (Optional)**",
+            placeholder="e.g., 8517, 851712...",
+            help="Enter more specific HS code or leave empty to use 2-digit selection"
+        )
+        
+        # Determine final HS code to use
+        final_hs = manual_hs if manual_hs else selected_2digits
+        
+    # Dynamic country selection based on HS code
     with st.sidebar:
         if "🇮🇳➡️ India Export" in mode:
             with st.spinner("Loading destinations..."):
-                dests = get_distinct_optimized("country_of_destination", 500)
+                if final_hs:
+                    dests = get_filtered_countries(final_hs, mode)
+                    help_text = f"Countries available for HS code {final_hs}"
+                else:
+                    dests = get_filtered_countries(None, mode)
+                    help_text = "Select HS code first for filtered results"
+                    
             sel_dest = st.multiselect(
-                "**🌍 Country of Destination**",
+                f"**🌍 Country of Destination** ({len(dests)} available)",
                 dests,
-                default=dests[:3] if dests else [],
-                help="Select destination countries"
+                help=help_text
             )
             sel_orig = None
         else:
             with st.spinner("Loading origins..."):
-                origs = get_distinct_optimized("country_of_origin", 500)
+                if final_hs:
+                    origs = get_filtered_countries(final_hs, mode)
+                    help_text = f"Countries available for HS code {final_hs}"
+                else:
+                    origs = get_filtered_countries(None, mode)
+                    help_text = "Select HS code first for filtered results"
+                    
             sel_orig = st.multiselect(
-                "**🌍 Country of Origin**",
+                f"**🌍 Country of Origin** ({len(origs)} available)",
                 origs,
-                default=origs[:3] if origs else [],
-                help="Select origin countries"
+                help=help_text
             )
             sel_dest = None
-    
     st.sidebar.markdown("---")
-    
     # Enhanced search button
     search_clicked = st.sidebar.button(
         "🚀 **SEARCH DATABASE**",
@@ -310,7 +418,7 @@ def render_sidebar():
     
     return {
         'mode': mode,
-        'hs_q': hs_q,
+        'hs_q': selected_2digits,  # now a list of prefixes
         'ship_q': ship_q,
         'cons_q': cons_q,
         'prod_q': prod_q,
@@ -319,7 +427,6 @@ def render_sidebar():
         'sel_orig': sel_orig,
         'search_clicked': search_clicked
     }
-
 # ─── Enhanced Results Display Functions ────────────────────────────────────────
 def render_kpis(df):
     """Render KPI metrics with enhanced styling"""
@@ -343,7 +450,7 @@ def render_kpis(df):
     with col2:
         unique_shippers = df['shipper_name'].nunique()
         st.metric(
-            label="🏢 Unique Shippers",
+            label="🏢 Shippers",
             value=f"{unique_shippers:,}",
             delta=f"{unique_shippers/len(df)*100:.1f}% diversity"
         )
@@ -351,7 +458,7 @@ def render_kpis(df):
     with col3:
         unique_consignees = df['consignee_name'].nunique()
         st.metric(
-            label="🏭 Unique Consignees",
+            label="🏭 Consignees",
             value=f"{unique_consignees:,}",
             delta=f"{unique_consignees/len(df)*100:.1f}% diversity"
         )
@@ -371,7 +478,7 @@ def render_kpis(df):
             delta=f"to {end_date}"
         )
 
-def render_charts(df):
+def render_charts(df, analysis_mode):
     """Render enhanced charts with Plotly"""
     if df.empty:
         return
@@ -388,8 +495,17 @@ def render_charts(df):
             names=mode_counts.index,
             color_discrete_sequence=['#FFD700', '#FFA500', '#FF8C00', '#FF7F50']
         )
-        fig.update_traces(textposition='inside', textinfo='percent+label')
-        fig.update_layout(showlegend=True, height=400)
+        fig.update_traces(
+            textposition='inside', 
+            textinfo='percent+label',
+            textfont=dict(size=12, color='black'),
+            textfont_size=14
+        )
+        fig.update_layout(
+            showlegend=True, 
+            height=400,
+            font=dict(size=12, color='black')
+        )
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
@@ -406,7 +522,10 @@ def render_charts(df):
         fig.update_layout(
             showlegend=False,
             height=400,
-            yaxis={'categoryorder': 'total ascending'}
+            yaxis={'categoryorder': 'total ascending'},
+            xaxis_title="<b>Number of Shipments</b>",
+            yaxis_title="<b>Ports</b>",
+            font=dict(size=11)
         )
         st.plotly_chart(fig, use_container_width=True)
     
@@ -427,9 +546,11 @@ def render_charts(df):
         fig.update_layout(
             showlegend=False,
             height=400,
-            xaxis_title="Month",
-            yaxis_title="Shipments"
+            xaxis_title="<b>Month</b>",
+            yaxis_title="<b>Shipments</b>",
+            font=dict(size=11)
         )
+        fig.update_traces(line=dict(width=3), marker=dict(size=8))
         st.plotly_chart(fig, use_container_width=True)
     
     with col4:
@@ -446,10 +567,72 @@ def render_charts(df):
         fig.update_layout(
             showlegend=False,
             height=400,
-            yaxis={'categoryorder': 'total ascending'}
+            yaxis={'categoryorder': 'total ascending'},
+            xaxis_title="<b>Number of Shipments</b>",
+            yaxis_title="<b>Products</b>",
+            font=dict(size=11)
         )
         st.plotly_chart(fig, use_container_width=True)
 
+    # Chart row 3 - NEW ROW
+    col5, col6 = st.columns(2)
+
+    with col5:
+        if "Export" in analysis_mode:
+            st.markdown("#### 🏢 **Top 10 Shippers**")
+            top_shippers = df['shipper_name'].value_counts().head(10)
+            
+            fig = px.bar(
+                x=top_shippers.values,
+                y=[name[:30] + "..." if len(name) > 30 else name for name in top_shippers.index],
+                orientation='h',
+                color=top_shippers.values,
+                color_continuous_scale='Blues'
+            )
+        else:  # Import mode
+            st.markdown("#### 🏭 **Top 10 Consignees**")
+            top_consignees = df['consignee_name'].value_counts().head(10)
+            
+            fig = px.bar(
+                x=top_consignees.values,
+                y=[name[:30] + "..." if len(name) > 30 else name for name in top_consignees.index],
+                orientation='h',
+                color=top_consignees.values,
+                color_continuous_scale='Blues'
+            )
+        
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            yaxis={'categoryorder': 'total ascending'},
+            xaxis_title="<b>Number of Shipments</b>",
+            yaxis_title="<b>Companies</b>",
+            font=dict(size=11)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col6:
+        st.markdown("#### 📣 **Top 10 Notify Parties**")
+        top_notifies = df['notify_party'].value_counts().head(10)
+
+        fig = px.bar(
+            x=top_notifies.values,
+            y=[name[:30] + "..." if len(name) > 30 else name for name in top_notifies.index],
+            orientation='h',
+            color=top_notifies.values,
+            color_continuous_scale='Purples'
+        )
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            yaxis={'categoryorder': 'total ascending'},
+            xaxis_title="<b>Number of Shipments</b>",
+            yaxis_title="<b>Notify Parties</b>",
+            font=dict(size=11)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        pass
 # ─── Main Application Logic ────────────────────────────────────────────────────
 def main():
     # Render sidebar and get parameters
@@ -463,57 +646,59 @@ def main():
         
         start_time = time.time()
         
-        # Build query
+        # Build query with optimal filter order (most selective first)
         clauses, sql_params = [], {}
         
-        # Mode-specific country filtering
-        if "Export" in params['mode'] and params['sel_dest']:
-            clauses.append("country_of_destination IN :dest")
-            sql_params["dest"] = tuple(params['sel_dest'])
-        elif "Import" in params['mode'] and params['sel_orig']:
-            clauses.append("country_of_origin IN :orig")
-            sql_params["orig"] = tuple(params['sel_orig'])
-        
-        # HS Code filtering (most selective first)
+        # 1. HS Code filtering first (most selective)
         if params['hs_q']:
-            clauses.append("hs_code LIKE :hs")
-            sql_params["hs"] = f"{params['hs_q']}%"
+            clauses.append("LEFT(hs_code,2) IN :hs2")
+            sql_params["hs2"] = tuple(params['hs_q'])
         
-        # Fuzzy search filters
-        with loading_placeholder:
-            show_loading("🤖 Processing fuzzy searches...")
+        # 2. Country filtering second
+        if "Export" in params['mode'] and params['sel_dest']:
+            placeholders = ','.join([f':dest{i}' for i in range(len(params['sel_dest']))])
+            clauses.append(f"country_of_destination IN ({placeholders})")
+            for i, dest in enumerate(params['sel_dest']):
+                sql_params[f"dest{i}"] = dest
+        elif "Import" in params['mode'] and params['sel_orig']:
+            placeholders = ','.join([f':orig{i}' for i in range(len(params['sel_orig']))])
+            clauses.append(f"country_of_origin IN ({placeholders})")
+            for i, orig in enumerate(params['sel_orig']):
+                sql_params[f"orig{i}"] = orig
         
-        if params['ship_q']:
-            ships = get_distinct_optimized("shipper_name", 2000)
-            good_ships = fuzzy_filter_optimized(ships, params['ship_q'])
-            if good_ships:
-                clauses.append("shipper_name IN :ship")
-                sql_params["ship"] = tuple(good_ships)
+        # 3. Fuzzy searches (only if previous filters don't reduce dataset enough)
         
-        if params['cons_q']:
-            cons = get_distinct_optimized("consignee_name", 2000)
-            good_cons = fuzzy_filter_optimized(cons, params['cons_q'])
-            if good_cons:
-                clauses.append("consignee_name IN :cons")
-                sql_params["cons"] = tuple(good_cons)
-        
-        if params['prod_q']:
-            prods = get_distinct_optimized("product_description", 2000)
-            good_prods = fuzzy_filter_optimized(prods, params['prod_q'])
-            if good_prods:
-                clauses.append("product_description IN :prod")
-                sql_params["prod"] = tuple(good_prods)
-        
-        if params['notify_q']:
-            notifies = get_distinct_optimized("notify_party", 2000)
-            good_notifies = fuzzy_filter_optimized(notifies, params['notify_q'])
-            if good_notifies:
-                clauses.append("notify_party IN :notf")
-                sql_params["notf"] = tuple(good_notifies)
+        perform_fuzzy = True
+            
+        if perform_fuzzy:
+            with loading_placeholder:
+                show_loading("🤖 Processing fuzzy searches...")
+            
+            # Batch fuzzy searches for better performance
+            fuzzy_searches = [
+                (params['ship_q'], "shipper_name", "ship"),
+                (params['cons_q'], "consignee_name", "cons"), 
+                (params['prod_q'], "product_description", "prod"),
+                (params['notify_q'], "notify_party", "notf")
+            ]
+            
+            for query, column, param_key in fuzzy_searches:
+                if query:
+                    choices = get_distinct_optimized(column, 1500)  # Reduced from 2000
+                    matches = fuzzy_filter_optimized(choices, query, limit=30, cutoff=75)
+                    if matches:
+                        placeholders = ','.join([f':{param_key}{i}' for i in range(len(matches))])
+                        clauses.append(f"{column} IN ({placeholders})")
+                        for i, match in enumerate(matches):
+                            sql_params[f"{param_key}{i}"] = match
         
         # Build final query
+       # Build final optimized query
         where_clause = " AND ".join(clauses) if clauses else "1=1"
         
+        
+       
+            
         # Get count first
         with loading_placeholder:
             show_loading("📊 Counting results...")
@@ -526,18 +711,7 @@ def main():
             st.info("💡 **Tips:** Use broader search terms or remove some filters.")
             return
         
-        if total_count > 50000000:
-            loading_placeholder.empty()
-            st.warning(f"⚠️ **Large dataset detected:** {total_count:,} records found!")
-            st.info("🚀 **Performance tip:** Add more specific filters to reduce search time.")
-            
-            if not st.button("🔄 **Continue with large dataset**"):
-                return
-            
-            loading_placeholder = st.empty()
         
-        # Fetch data with LIMIT for large datasets
-        limit_clause = "LIMIT 10000000" if total_count > 10000000 else ""
         
         with loading_placeholder:
             show_loading("📥 Fetching your data...")
@@ -547,7 +721,7 @@ def main():
                 SELECT * FROM volza_main 
                 WHERE {where_clause}
                 ORDER BY date DESC
-                {limit_clause}
+                
             """)
             
             df = pd.read_sql_query(sql_query, engine, params=sql_params)
@@ -583,13 +757,14 @@ def main():
             
             # Charts
             st.markdown("## 📈 **Analytics Dashboard**")
-            render_charts(df)
+            render_charts(df, params['mode'])
+
             st.markdown("---")
             
             # Data table with enhanced features
             st.markdown("## 📋 **Detailed Results**")
             
-            # Add filters for the data table
+            #Add filters for the data table
             col1, col2, col3 = st.columns(3)
             with col1:
                 show_sample = st.checkbox("📝 Show sample (1000 rows)", value=True)
@@ -598,21 +773,37 @@ def main():
             with col3:
                 sort_order = st.selectbox("📊 Order", ["Descending", "Ascending"])
             
-            # Apply sorting and sampling
+            # ─── Apply sorting and sampling ─────────────────────────────────────────────────
             display_df = df.copy()
             ascending = sort_order == "Ascending"
             display_df = display_df.sort_values(by=sort_by, ascending=ascending)
-            
+
+            # Drop technical columns
+            exclude = [
+                "gross_weight","gross_weight_unit","raw_shipper_name","raw_consignee_name",
+                "raw_shipper_address1","raw_shipper_address2","raw_shipper_city","raw_shipper_state",
+                "raw_consignee_add1","raw_consignee_add2","raw_consignee_city","raw_consignee_state",
+                "raw_consignee_pincode","raw_consignee_phone","raw_consignee_e_mail",
+                "raw_consignee_country","is_unique","isunique","record_id","iec",
+                "source_file","source_folder","processed_timestamp"
+            ]
+            display_df = display_df.drop(columns=exclude, errors="ignore")
+
+            # If sampling, trim to top 1,000
             if show_sample and len(display_df) > 1000:
                 display_df = display_df.head(1000)
                 st.info(f"📋 Showing sample of 1000 rows from {len(df):,} total records")
-            
+
+            # Render table
             st.dataframe(display_df, use_container_width=True, height=400)
-            
-            # Enhanced download options
+
+            # ─── Enhanced download options ─────────────────────────────────────────────────
+            # Prepare clean full‐download (without tech columns)
+            download_df = df.drop(columns=exclude, errors="ignore")
+
             col1, col2, col3 = st.columns(3)
             with col1:
-                csv_data = df.to_csv(index=False)
+                csv_data = download_df.to_csv(index=False)
                 st.download_button(
                     "📥 **Download Full CSV**",
                     csv_data,
@@ -631,8 +822,9 @@ def main():
                 )
             with col3:
                 st.markdown(f"**📊 Total Records:** {len(df):,}")
-            
+
             st.markdown("---")
+
             
             # Enhanced Summary Table
             st.markdown("## 📊 **Executive Summary**")
@@ -726,7 +918,7 @@ def main():
             with col2:
                 st.metric("🌍 **Countries**", "50+ Covered")
             with col3:
-                st.metric("🏢 **Companies**", "1000+ Tracked")
+                st.metric("🏢 **Companies**", "1000+")
             with col4:
                 st.metric("⚡ **Avg Query Time**", "< 10 seconds")
 
