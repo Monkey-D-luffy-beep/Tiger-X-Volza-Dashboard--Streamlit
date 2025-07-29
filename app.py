@@ -722,13 +722,13 @@ def main():
         with st.expander("📈 **Platform Statistics**"):
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("🗄️ **Database Size**", "10M+ Records")
+                st.metric("🗄️ **Database Size**", "1M+ Records")
             with col2:
-                st.metric("🌍 **Countries**", "195+ Covered")
+                st.metric("🌍 **Countries**", "50+ Covered")
             with col3:
-                st.metric("🏢 **Companies**", "500K+ Tracked")
+                st.metric("🏢 **Companies**", "1000+ Tracked")
             with col4:
-                st.metric("⚡ **Avg Query Time**", "< 3 seconds")
+                st.metric("⚡ **Avg Query Time**", "< 10 seconds")
 
 if __name__ == "__main__":
     main()
